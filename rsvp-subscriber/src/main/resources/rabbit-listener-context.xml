@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:rabbit="http://www.springframework.org/schema/rabbit"
+	xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-3.1.xsd 
+http://www.springframework.org/schema/rabbit http://www.springframework.org/schema/rabbit/spring-rabbit-1.0.xsd">
+
+	<rabbit:connection-factory id="connectionFactory"
+		host="localhost" username="guest" password="guest" />
+
+	<rabbit:admin connection-factory="connectionFactory" />
+	
+	<rabbit:queue id="fbQueue" />
+
+<!--  	<rabbit:queue id="twtQueue" />
+	
+	<rabbit:queue id="rsvpQueue" />
+	-->
+	<rabbit:topic-exchange id="oliExchange" name="FEED-EXCHANGE">
+		<rabbit:bindings>
+			<rabbit:binding queue="fbQueue" pattern="rsvp.*"/>
+			<!--  <rabbit:binding queue="twtQueue" pattern="twt.*"/>
+			<rabbit:binding queue="rsvpQueue" pattern="rsvp.*"/> -->
+		</rabbit:bindings>
+	</rabbit:topic-exchange>
+	
+	<bean id="rsvp-fb-listener"  class="com.lio.listener.FacebookListenerSpout" />
+	<!--  <bean id="rsvp-twt-listener" class="com.lio.listener.TwitterListenerSpout" /> -->
+	<bean id="fbBoltProcessor"  class="com.lio.listener.FacebookBolt"/>
+	
+	<rabbit:listener-container 
+		connection-factory="connectionFactory">
+		<rabbit:listener ref="rsvp-fb-listener" queues="fbQueue" />
+	<!--  	<rabbit:listener ref="rsvp-twt-Listener" queues="twtQueue" /> -->
+	</rabbit:listener-container>
+
+	<bean id="fbTopology"  class="com.lio.topology.FacebookTopology">
+		<property name="fbSpout" ref="rsvp-fb-listener"/>
+		<property name="fbBolt" ref="fbBoltProcessor"/>
+	</bean>
+</beans> 
