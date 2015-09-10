@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns:aop="http://www.springframework.org/schema/aop"
+	xmlns:context="http://www.springframework.org/schema/context"
+	xmlns:mongo="http://www.springframework.org/schema/data/mongo"
+	xmlns:task="http://www.springframework.org/schema/task"
+	xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-4.0.xsd
+		http://www.springframework.org/schema/aop http://www.springframework.org/schema/aop/spring-aop-4.0.xsd
+		http://www.springframework.org/schema/context http://www.springframework.org/schema/context/spring-context.xsd
+		http://www.springframework.org/schema/data/mongo http://www.springframework.org/schema/data/mongo/spring-mongo-1.0.xsd
+		http://www.springframework.org/schema/task http://www.springframework.org/schema/task/spring-task-4.0.xsd">
+  <context:property-placeholder location="classpath:application.properties"/>
+ <!--  
+<aop:aspectj-autoproxy />
+<bean name="dbConnectionAspect" class="com.lio.markit.aop.MongoDBAspect"/>
+-->
+	<bean id="marketDataImporter" class="com.lio.markit.spout.MarketDataImporterSpout">
+		<property name="server" value="dev.markitondemand.com"/>
+	</bean>
+	<!-- Mongo Configuration is only needed by feedConsolidator. 
+		Storm Data exporter instantiates db connection with new operator. Coz it could not be declared as a variable 
+		As mongoTemplate is not a serialized class and Bolts are serialized.  -->
+	<mongo:mongo host="127.0.0.1" port="27017" />
+	<mongo:db-factory dbname="stockmarketfeed" />
+
+	<bean id="mongoTemplate" class="org.springframework.data.mongodb.core.MongoTemplate">
+		<constructor-arg name="mongoDbFactory" ref="mongoDbFactory" />
+	</bean>
+	
+	<bean id="eodFeedConsolidator" class="com.lio.markit.jobs.EODFeedConsolidator">
+		<property name="template" ref="mongoTemplate"/>
+	</bean>
+	
+	<bean id="marketDao" class="com.lio.markit.db.MarketDaoImpl"/>
+	<bean id="topologyRunner" class="com.lio.markit.jobs.TopologyRunnerJob"/>
+	    
+	    
+	  <task:scheduled-tasks scheduler="mongoOpsJob">
+		<task:scheduled ref="eodFeedConsolidator" method="consolidateFeedData" cron="* * 1 * * MON-FRI" />
+	</task:scheduled-tasks>
+	
+	<task:scheduler id="mongoOpsJob"/>
+	
+	   <!--  
+	<task:scheduled-tasks scheduler="markitTopology">
+		<task:scheduled ref="topologyRunner" method="runTopology" cron="0 0/1 9-17 * * MON-FRI" />
+	</task:scheduled-tasks>
+	
+	<task:scheduler id="markitTopology"/>
+	-->
+</beans>
