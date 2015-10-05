@@ -3,6 +3,8 @@ package com.lio.markit.db;
 import java.io.Serializable;
 import java.net.UnknownHostException;
 
+import org.bson.types.BasicBSONList;
+import org.joda.time.LocalDateTime;
 import org.json.simple.JSONArray;
 import org.json.simple.JSONObject;
 import org.slf4j.Logger;
@@ -16,6 +18,11 @@ import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
 
 import com.lio.markit.aop.DbAccess;
+import com.mongodb.BasicDBList;
+import com.mongodb.BasicDBObject;
+import com.mongodb.DB;
+import com.mongodb.DBCollection;
+import com.mongodb.DBCursor;
 import com.mongodb.DBObject;
 import com.mongodb.MongoClient;
 import com.mongodb.MongoException;
@@ -39,6 +46,7 @@ public class MarketDaoImpl implements MarketDao{
 		
 		try {
 			mClient = new MongoClient(); 
+			
 			 factory = new SimpleMongoDbFactory(mClient,"stockmarketfeed");
 			this.mongoTemplate = new MongoTemplate(factory);
 			
@@ -106,33 +114,84 @@ public class MarketDaoImpl implements MarketDao{
 	
 	
 	@DbAccess
-	public void consolidateFeedData(String symbol){
+	public void consolidateFeedData(final String symbol){
 		openConnection();
-		 Query searchStockQuery = new Query(Criteria.where("Symbol").is(symbol));
-		
-		 	JSONObject jsonObject = new JSONObject(); 
-			final JSONObject timeValPair = new JSONObject(); 
-			final JSONArray arrayOfKeyValues = new JSONArray(); 
+		 LocalDateTime ldt = new LocalDateTime(); 
+		 
+		 String cvTable = "CONSVIEW"+"-"+ldt.getMonthOfYear()+"-"+ldt.getDayOfMonth()+"-"+ldt.getYear();
 			
-		 mongoTemplate.executeQuery(searchStockQuery, "MARKITFEED", new DocumentCallbackHandler(){
+		DB db = mClient.getDB("stockmarketfeed");
+		DBCollection collection = db.getCollection("MARKITFEED");
+		BasicDBObject query = new BasicDBObject("Symbol",symbol);
+		
+		DBCursor cursor = collection.find(query); 
+		
+		while(cursor.hasNext()){
+			DBObject feedObject = cursor.next();
+			
+			DBCollection cvCollection = db.getCollection(cvTable);
+			
+			DBCursor cvCursor = cvCollection.find(new BasicDBObject("Symbol",symbol));
+			boolean recordExists = false; 
+			
+			 JSONObject timeValPair = new JSONObject(); 
+			 JSONArray arrayOfKeyValues = new JSONArray(); 
+			 JSONObject jsonObject = new JSONObject(); 
+			 boolean hasRecord = false; 
 			 
-			 
-			@Override
-			public void processDocument(DBObject dbObject)
-					throws MongoException, DataAccessException {
-				if(!mongoTemplate.collectionExists("CONSOLIDATEDVIEW")){
-					mongoTemplate.createCollection("CONSOLIDATEDVIEW");
+			if(cvCursor.size() > 0){
+				hasRecord = true;
+				while(cvCursor.hasNext()){
+					
+					DBObject cvObject = cvCursor.next();
+					
+					
+					BasicDBList objArray = (BasicDBList)cvObject.get(symbol);
+					for(Object indObject:objArray){
+						DBObject x = (DBObject)indObject;
+						arrayOfKeyValues.add(x);
+						if(feedObject.get("Timestamp").equals(x.get("Timestamp"))){
+							
+							recordExists = true;
+						}
+					}
 					
 				}
-				timeValPair.put(dbObject.get("Timestamp"), dbObject);
-				arrayOfKeyValues.add(timeValPair);
-				
+				if(!recordExists){
+					timeValPair.put(feedObject.get("Timestamp"), feedObject);
+					timeValPair.put("Timestamp", feedObject.get("Timestamp"));
+					
+					arrayOfKeyValues.add(timeValPair);
+					
+					cvCollection.remove(new BasicDBObject("Symbol", symbol));
+					jsonObject.put(symbol, arrayOfKeyValues);
+					jsonObject.put("Symbol",symbol);
+					mongoTemplate.insert(jsonObject,cvTable);
+					return;
+				}
 				
 			}
-			 
-		 });
-		 jsonObject.put(symbol, arrayOfKeyValues);
-		 mongoTemplate.insert(jsonObject, "CONSOLIDATEDVIEW");
+			
+			if(hasRecord == false){
+				timeValPair.put(feedObject.get("Timestamp"), feedObject);
+				timeValPair.put("Timestamp", feedObject.get("Timestamp"));
+				
+				arrayOfKeyValues.add(timeValPair);
+				
+				jsonObject.put(symbol, arrayOfKeyValues);
+				jsonObject.put("Symbol",symbol);
+				
+				mongoTemplate.insert(jsonObject,cvTable);
+			}
+			
+		
+			
+			
+			
+		}
+		
+		
+		 
 		closeConnection();
 		
 	}

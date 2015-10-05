@@ -54,4 +54,11 @@ public class EODFeedConsolidator {
 		
 	}
 	
+	public static void main(String[] args){
+		ContextInitializer init = new ContextInitializer(); 
+		EODFeedConsolidator eod = (EODFeedConsolidator)init.getBean("eodFeedConsolidator");
+		eod.consolidateFeedData();
+		
+	}
+	
 }
